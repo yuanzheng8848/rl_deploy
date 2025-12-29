@@ -1,5 +1,2 @@
 record_data*
 rl_deploy_2
-
-*.pkl
-!serl/serl_launcher/serl_launcher/networks/resnet10_params.pkl
