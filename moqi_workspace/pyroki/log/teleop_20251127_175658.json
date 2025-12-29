@@ -1,0 +1,29 @@
+{
+"header": [{"name": "timestamp", "description": "UTC ISO timestamp"}, {"name": "target_left_qw", "description": "Left arm Quaternion w"}, {"name": "target_left_qx", "description": "Left arm Quaternion x"}, {"name": "target_left_qy", "description": "Left arm Quaternion y"}, {"name": "target_left_qz", "description": "Left arm Quaternion z"}, {"name": "target_left_x", "description": "Left arm Position x (m)"}, {"name": "target_left_y", "description": "Left arm Position y (m)"}, {"name": "target_left_z", "description": "Left arm Position z (m)"}, {"name": "target_right_qw", "description": "Right arm Quaternion w"}, {"name": "target_right_qx", "description": "Right arm Quaternion x"}, {"name": "target_right_qy", "description": "Right arm Quaternion y"}, {"name": "target_right_qz", "description": "Right arm Quaternion z"}, {"name": "target_right_x", "description": "Right arm Position x (m)"}, {"name": "target_right_y", "description": "Right arm Position y (m)"}, {"name": "target_right_z", "description": "Right arm Position z (m)"}, {"name": "joint_openarm_left_joint1", "description": "Joint openarm_left_joint1 position (rad)"}, {"name": "joint_openarm_left_joint2", "description": "Joint openarm_left_joint2 position (rad)"}, {"name": "joint_openarm_left_joint3", "description": "Joint openarm_left_joint3 position (rad)"}, {"name": "joint_openarm_left_joint4", "description": "Joint openarm_left_joint4 position (rad)"}, {"name": "joint_openarm_left_joint5", "description": "Joint openarm_left_joint5 position (rad)"}, {"name": "joint_openarm_left_joint6", "description": "Joint openarm_left_joint6 position (rad)"}, {"name": "joint_openarm_left_joint7", "description": "Joint openarm_left_joint7 position (rad)"}, {"name": "joint_openarm_right_joint1", "description": "Joint openarm_right_joint1 position (rad)"}, {"name": "joint_openarm_right_joint2", "description": "Joint openarm_right_joint2 position (rad)"}, {"name": "joint_openarm_right_joint3", "description": "Joint openarm_right_joint3 position (rad)"}, {"name": "joint_openarm_right_joint4", "description": "Joint openarm_right_joint4 position (rad)"}, {"name": "joint_openarm_right_joint5", "description": "Joint openarm_right_joint5 position (rad)"}, {"name": "joint_openarm_right_joint6", "description": "Joint openarm_right_joint6 position (rad)"}, {"name": "joint_openarm_right_joint7", "description": "Joint openarm_right_joint7 position (rad)"}],
+"data": [
+],
+"error":"left arm joint  4  cmd:  -2.0127493305958084  out of limit [ -1.570896 ,  1.570896 ]
+left arm joint  5  cmd:  -0.8761901859359198  out of limit [ -0.785498 ,  0.785498 ]
+left arm joint  4  cmd:  -2.05623472934842  out of limit [ -1.570896 ,  1.570896 ]
+left arm joint  5  cmd:  -0.8489536347126938  out of limit [ -0.785498 ,  0.785498 ]
+left arm joint  4  cmd:  -2.095157213409008  out of limit [ -1.570896 ,  1.570896 ]
+left arm joint  5  cmd:  -0.8213281993490353  out of limit [ -0.785498 ,  0.785498 ]
+left arm joint  4  cmd:  -2.1297115680079814  out of limit [ -1.570896 ,  1.570896 ]
+left arm joint  5  cmd:  -0.7933938165712098  out of limit [ -0.785498 ,  0.785498 ]
+left arm joint  4  cmd:  -2.1601472738238203  out of limit [ -1.570896 ,  1.570896 ]
+No solution found!
+⚠️ 解析解失败，启用数值优化IK作为备选...
+Exception:  'list' object has no attribute 'shape'
+Traceback (most recent call last):
+  File "/home/sj/Documents/moqi_workspace_20251119_211400/./pyroki/main_v4.py", line 614, in main
+    pyroki_solution = solver.solve_ik(
+                      ^^^^^^^^^^^^^^^^
+  File "/home/sj/Documents/moqi_workspace_20251119_211400/pyroki/robot_ik_solver.py", line 171, in solve_ik
+    assert target_pose.shape == (num_targets, 7), (
+           ^^^^^^^^^^^^^^^^^
+AttributeError: 'list' object has no attribute 'shape'
+✅ IK性能日志已保存: /home/sj/Documents/moqi_workspace_20251119_211400/pyroki/log/ik_performance_20251127_175717.csv
+
+[WorkspaceConstraint] 统计:
+  总调用次数:   1114"
+}
