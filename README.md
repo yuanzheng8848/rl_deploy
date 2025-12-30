@@ -2,71 +2,76 @@
 
 本项目实现了基于 SERL (Software for Evolving RL) 框架的 OpenArm 机械臂强化学习部署系统。系统采用分布式架构，分为硬件服务器、训练端 (Learner) 和 执行端 (Actor)。
 
-## 1. 系统架构
+## 1. 项目结构与代码位置
 
-系统由三个独立进程组成，通过网络进行通信：
+**核心说明**：本项目所有自定义和新增代码均位于 `moqi_workspace/rl_deploy` 目录下。
+-   `moqi_workspace/` 和 `serl/` 目录下的其他代码保持原样，未做修改。
+-   所有操作（启动 Server、训练、测试）均应在 `moqi_workspace/rl_deploy` 目录下进行。
 
-1.  **Hardware Server (`openarm_server.py`)**:
-    -   **功能**: 负责与底层硬件（或 Mock 硬件）交互，屏蔽硬件细节。
-    -   **接口**: 提供 Flask HTTP API (`/getstate`, `/pose`, `/jointreset`)。
-    -   **数据**: 获取关节角度、夹爪状态、摄像头图像；接收笛卡尔位姿指令并执行 IK 解算。
-    -   **可视化**: 集成 Viser 可视化工具，实时显示机器人状态。
+## 2. 系统架构与部署拓扑
 
-2.  **RL Environment (`openarm_env.py`)**:
-    -   **功能**: 标准 Gym 环境封装，负责将 RL 动作转换为 Server 指令，并将 Server 状态转换为 RL 观测。
-    -   **特性**:
-        -   支持双臂 (`both`) 或单臂 (`left`/`right`) 控制。
-        -   **RelativeFrame**: 使用相对位姿控制 (Delta Position + Delta Rotation)。
-        -   **Reward**: 训练时使用 Reward Classifier (分类器) 提供奖励信号。
+系统支持分布式部署，组件分布如下：
 
-3.  **RL Agent (`train_rl.py`)**:
-    -   **功能**: 核心 RL 训练逻辑，基于 DrQ-v2 算法。
-    -   **模式**:
-        -   **Learner**: 负责从 Replay Buffer 采样并更新网络参数。
-        -   **Actor**: 负责与环境交互，收集数据并发送给 Learner，同时从 Learner 同步最新参数。
-    -   **Demo Loading**: 支持加载演示数据 (`rl_success_demos.pkl`) 加速训练，包含奖励重塑逻辑 (Success=0.5, Path=0.0)。
+| 组件 | 必须运行位置 | 说明 |
+| :--- | :--- | :--- |
+| **OpenArm Server** | **机械臂主机** | 必须直接连接机械臂硬件 (USB/CAN)。 |
+| **Actor** (`run_actor.sh`) | **机械臂主机** | 需要低延迟连接 Server 和 Env，必须与 Server 同机运行。 |
+| **Learner** (`run_learner.sh`) | **任意主机** | 可以运行在带强力 GPU 的工作站或服务器上。 |
 
-## 2. 快速开始
+**IP 配置注意**：
+-   启动 **Actor** 时，必须指定 **Learner** 的 IP 地址。
+-   修改 `run_actor.sh` 中的 `--ip` 参数：
+    ```bash
+    python train_rl.py --actor --ip=<LEARNER_HOST_IP> ...
+    ```
 
-启动系统需要打开三个终端，分别运行以下命令：
+## 3. 关键组件说明
 
-### 第一步：启动硬件服务器
-```bash
-# 在 moqi_workspace/rl_deploy 目录下
-python openarm_server.py
-```
-*注：如果未连接真实硬件，会自动回退到 Mock 模式。*
+### 奖励分类器 (Classifiers)
+本项目使用了三个不同的奖励分类器 checkpoint，分别用于不同的视角或阶段：
 
-### 第二步：启动 Learner (训练端)
-```bash
-# 在 moqi_workspace/rl_deploy 目录下
-./run_learner.sh
-```
-*脚本内容参考：*
-```bash
-python train_rl.py --learner --arm=right --exp_name=openarm_rl_test ...
-```
+1.  **`classifier_ckpt_cam2_last10`** (主要):
+    -   **作用**: 基于 **Head Camera (Cam 2)** 的图像判断任务是否成功。
+    -   **特点**: 专门针对任务最后阶段（Last 10 frames）的成功状态进行训练，作为主要的稀疏奖励来源。
+2.  **`classifier_ckpt_cam1`** (辅助):
+    -   **作用**: 基于 **Right Camera (Cam 1)** 的图像判断任务是否成功。
+    -   **特点**: 提供辅助视角的奖励信号，与主视角结合以提高鲁棒性。
+3.  **`classifier_ckpt`** (通用/备用):
+    -   **作用**: 基础版本的分类器。
+    -   **特点**: 可作为基准或在特定测试中使用。
 
-### 第三步：启动 Actor (执行端)
-```bash
-# 在 moqi_workspace/rl_deploy 目录下
-./run_actor.sh
-```
-*脚本内容参考：*
-```bash
-python train_rl.py --actor --arm=right --ip=<LEARNER_IP> ...
-```
-
-## 3. 关键文件说明
-
+### 核心脚本
 | 文件名 | 说明 |
 | :--- | :--- |
 | `openarm_server.py` | 硬件控制服务器，处理 IK 和相机数据。 |
 | `openarm_env.py` | Gym 环境定义，处理观测空间 (Images + State) 和动作空间。 |
 | `train_rl.py` | RL 训练主入口，包含 Actor 和 Learner 的逻辑。 |
 | `run_learner.sh` | 启动 Learner 的脚本，配置了右臂控制 (`--arm=right`)。 |
-| `run_actor.sh` | 启动 Actor 的脚本，连接到 Learner IP。 |
+| `run_actor.sh` | 启动 Actor 的脚本，**需配置 Learner IP**。 |
 | `rl_success_demos.pkl` | 成功的演示轨迹数据，用于辅助训练。 |
+
+## 4. 快速开始
+
+启动系统需要打开三个终端，分别运行以下命令：
+
+### 第一步：启动硬件服务器 (机械臂主机)
+```bash
+# 在 moqi_workspace/rl_deploy 目录下
+python openarm_server.py
+```
+
+### 第二步：启动 Learner (训练主机)
+```bash
+# 在 moqi_workspace/rl_deploy 目录下
+./run_learner.sh
+```
+
+### 第三步：启动 Actor (机械臂主机)
+```bash
+# 在 moqi_workspace/rl_deploy 目录下
+# 务必确认 run_actor.sh 中的 IP 已指向 Learner 主机
+./run_actor.sh
+```
 
 ## 4. 逻辑细节
 
