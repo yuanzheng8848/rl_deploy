@@ -92,3 +92,24 @@ python openarm_server.py
 -   **观测**: TCP Pose (End-Effector) + Gripper Pos + Images.
 -   **动作**: Delta XYZ + Delta RPY + Gripper Command.
 -   **转换**: `RelativeFrame` Wrapper 将动作转换为相对于当前 TCP 的增量，`openarm_server` 将其转换为绝对位姿并通过 IK 解算为关节角度。
+
+## 5. 训练监控 (WandB)
+
+本项目使用 **Weights & Biases (WandB)** 进行训练过程的可视化监控。
+
+### 配置步骤
+在启动 **Learner** 的主机上，需要先登录 WandB：
+
+1.  **注册/获取 API Key**: 访问 [wandb.ai](https://wandb.ai) 注册账号并获取 API Key。
+2.  **本地登录**:
+    ```bash
+    wandb login <YOUR_API_KEY>
+    ```
+    或者在运行训练脚本时按照提示输入 Key。
+
+### 查看日志
+训练开始后，WandB 会自动在云端创建一个 Project（默认为 `serl_dev`），可以实时查看：
+-   **Success Rate**: 任务成功率曲线。
+-   **Q-Values**: Critic 网络的 Q 值变化。
+-   **Loss**: Actor 和 Critic 的训练损失。
+-   **Images**: 训练过程中的图像采样（如果开启了 Image Logging）。
