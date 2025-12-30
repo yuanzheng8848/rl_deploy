@@ -82,9 +82,9 @@ from serl_launcher.networks.reward_classifier import load_classifier_func
 from franka_env.envs.wrappers import BinaryRewardClassifierWrapper, Quat2EulerWrapper
 from franka_env.envs.relative_env import RelativeFrame
 
-class SmoothRewardClassifierWrapper(gym.Wrapper):
+class DeployBinaryRewardWrapper(gym.Wrapper):
     """
-    Compute smooth reward with custom classifier fn: reward = prob - 0.5
+    Compute binary reward with custom classifier fn: reward = 1 if prob > 0.5 else 0
     """
     def __init__(self, env, reward_classifier_func, reward_classifier_func_cam1=None):
         super().__init__(env)
@@ -111,39 +111,7 @@ class SmoothRewardClassifierWrapper(gym.Wrapper):
             else:
                  temp_obs = obs.copy()
 
-            # --- Debug Logging ---
-            if not hasattr(self, "_debug_counter"):
-                self._debug_counter = 0
-                os.makedirs("debug_classifier_images", exist_ok=True)
-            
-            # Print every step
-            img_debug = temp_obs["image_0"]
-            print(f"\n[Classifier Debug Step {self._debug_counter}]")
-            print(f"  Input Shape: {img_debug.shape}")
-            print(f"  Input Dtype: {img_debug.dtype}")
-            print(f"  Input Min/Max: {img_debug.min()}/{img_debug.max()}")
-            
-            # Save image
-            try:
-                import cv2
-                # img_debug is (1, 1, 128, 128, 3) or similar. Squeeze to (128, 128, 3)
-                # We assume it is (1, 1, 128, 128, 3) based on previous logic
-                if img_debug.ndim == 5:
-                    save_img = img_debug[0, 0]
-                elif img_debug.ndim == 4:
-                    save_img = img_debug[0]
-                else:
-                    save_img = img_debug
-                
-                # Convert RGB to BGR
-                save_img = cv2.cvtColor(save_img, cv2.COLOR_RGB2BGR)
-                cv2.imwrite(f"debug_classifier_images/step_{self._debug_counter:06d}.png", save_img)
-            except Exception as e:
-                print(f"Failed to save debug image: {e}")
-
-            if img_debug.shape != (1, 1, 128, 128, 3):
-                print(f"  WARNING: Shape mismatch! Expected (1, 1, 128, 128, 3)")
-            self._debug_counter += 1
+            # ---------------------
             # ---------------------
 
             logit = self.reward_classifier_func(temp_obs).item()
@@ -176,13 +144,12 @@ class SmoothRewardClassifierWrapper(gym.Wrapper):
                     info["classifier_prob_cam1"] = prob_cam1
             # -----------------------
             
-        # Smooth Reward: final_prob - 0.5
-        # Range: [-0.5, 0.5]
-        smooth_reward = final_prob - 0.5
-        rew += smooth_reward
+        # Binary Reward
+        binary_reward = 1.0 if final_prob > 0.35 else 0.0
+        rew += binary_reward
         
         # Terminate if highly successful (using combined prob)
-        if final_prob > 0.95:
+        if final_prob > 0.7:
             done = True
             
         info["classifier_prob"] = prob_primary # Store RAW primary prob for visualization
@@ -195,7 +162,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("env", "OpenArm-v0", "Name of environment.")
 flags.DEFINE_string("agent", "drq", "Name of agent.")
 flags.DEFINE_string("exp_name", "openarm_rl_deploy", "Name of the experiment for wandb logging.")
-flags.DEFINE_integer("max_traj_length", 10, "Maximum length of trajectory.")
+flags.DEFINE_integer("max_traj_length", 20, "Maximum length of trajectory.")
 flags.DEFINE_integer("seed", 42, "Random seed.")
 flags.DEFINE_bool("save_model", True, "Whether to save model.")
 flags.DEFINE_integer("batch_size", 256, "Batch size.")
@@ -565,6 +532,20 @@ def learner(rng, agent: DrQAgent, replay_buffer, demo_buffer):
     # To track the step in the training loop
     update_steps = 0
 
+    # Load checkpoint if it exists
+    if os.path.exists(FLAGS.checkpoint_path):
+        latest_ckpt = checkpoints.latest_checkpoint(FLAGS.checkpoint_path)
+        if latest_ckpt:
+            # Restore agent state
+            agent = agent.replace(state=checkpoints.restore_checkpoint(FLAGS.checkpoint_path, agent.state))
+            # Restore update_steps from the checkpoint path (assuming format "checkpoint_X")
+            try:
+                update_steps = int(latest_ckpt.split("_")[-1])
+                print_green(f"Restored checkpoint from {latest_ckpt} at step {update_steps}")
+            except ValueError:
+                print(f"Warning: Could not parse step from checkpoint path {latest_ckpt}")
+
+
     def stats_callback(type: str, payload: dict) -> dict:
         """Callback for when server receives stats request."""
         assert type == "send-stats", f"Invalid request type: {type}"
@@ -639,7 +620,9 @@ def learner(rng, agent: DrQAgent, replay_buffer, demo_buffer):
             server.publish_network(agent.state.params)
 
         if update_steps % FLAGS.log_period == 0 and wandb_logger:
-            wandb_logger.log(update_info, step=update_steps)
+            # Convert JAX arrays to numpy for WandB logging
+            update_info_np = jax.device_get(update_info)
+            wandb_logger.log(update_info_np, step=update_steps)
             wandb_logger.log({"timer": timer.get_average_times()}, step=update_steps)
 
         if FLAGS.checkpoint_period and update_steps % FLAGS.checkpoint_period == 0:
@@ -744,7 +727,7 @@ def main(_):
                 checkpoint_path=FLAGS.reward_classifier_ckpt_path_cam1,
             )
             
-        env = SmoothRewardClassifierWrapper(env, reward_func, reward_func_cam1)
+        env = DeployBinaryRewardWrapper(env, reward_func, reward_func_cam1)
     
     env = RecordEpisodeStatistics(env)
 

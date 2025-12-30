@@ -93,7 +93,7 @@ class DefaultOpenArmConfig:
 class OpenArmEnv(gym.Env):
     def __init__(
         self,
-        hz=2,
+        hz=5,
         fake_env=False,
         save_video=False,
         use_viser=False, # Deprecated but kept for compatibility
