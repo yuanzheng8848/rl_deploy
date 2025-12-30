@@ -791,13 +791,6 @@ def main(_):
                     for i in range(traj_len):
                         # Slice state and actions based on FLAGS.arm
                         # Assuming demo data is always dual arm (14 dim action, 2x7+2x1 state)
-                        # State structure in demo: likely flat or dict. 
-                        # Based on error "shape (16,) into shape (1,8)", state is likely (16,) [7+1 + 7+1]
-                        # Action is likely (14,)
-                        
-                        state = traj["observations"]["state"][i]
-                        next_state = traj["next_observations"]["state"][i]
-                        action = traj["actions"][i]
                         
                         # --- Adapt for RelativeFrame and Quat2EulerWrapper ---
                         # 1. Get Reset Pose (First frame of trajectory)
@@ -910,6 +903,7 @@ def main(_):
                         adjoint_inv = np.linalg.inv(adjoint)
                         
                         # Slice action based on arm
+                        action = traj["actions"][i]
                         if FLAGS.arm == "left":
                             arm_action = action[:7]
                         elif FLAGS.arm == "right":
@@ -923,6 +917,14 @@ def main(_):
                         action_body_6d = adjoint_inv @ action_base
                         final_action = np.concatenate([action_body_6d, gripper_action]) # (7,)
                         
+                        # --- Reward Shaping ---
+                        # Success Demos: Last 10 steps are success (0.5), others are path (0.0)
+                        # Failure Demos: All 0.0 (or -0.5? But we only have success demos here)
+                        # We assume rl_success_demos.pkl ONLY contains success demos.
+                        
+                        is_success_step = i >= (traj_len - 10)
+                        reward_val = 0.5 if is_success_step else 0.0
+                        
                         transition = {
                             "observations": {
                                 "state": final_state,
@@ -933,8 +935,8 @@ def main(_):
                                 **{k: v[i] for k, v in traj["next_observations"].items() if k != "state"}
                             },
                             "actions": final_action,
-                            "rewards": traj["rewards"][i],
-                            "masks": traj["masks"][i],
+                            "rewards": np.array(reward_val, dtype=np.float32), # Overwrite reward
+                            "masks": np.array(1.0, dtype=np.float32), # Ensure mask is 1.0
                             "dones": traj["dones"][i],
                         }
                         demo_buffer.insert(transition)
