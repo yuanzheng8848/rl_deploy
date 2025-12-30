@@ -5,18 +5,18 @@
 ## 1. 项目结构与代码位置
 
 **核心说明**：本项目所有自定义和新增代码均位于 `moqi_workspace/rl_deploy` 目录下。
--   `moqi_workspace/` 和 `serl/` 目录下的其他代码保持原样，未做修改。
--   所有操作（启动 Server、训练、测试）均应在 `moqi_workspace/rl_deploy` 目录下进行。
+-   `moqi_workspace/` 和 `serl/` 目录下的其他代码保持原状，仅修复部分兼容性bug。
+-   所有操作（启动 Server、训练、测试）均在 `moqi_workspace/rl_deploy` 目录下进行。
 
 ## 2. 系统架构与部署拓扑
 
 系统支持分布式部署，组件分布如下：
 
-| 组件 | 必须运行位置 | 说明 |
+| 组件 | 运行位置 | 说明 |
 | :--- | :--- | :--- |
-| **OpenArm Server** | **机械臂主机** | 必须直接连接机械臂硬件 (USB/CAN)。 |
-| **Actor** (`run_actor.sh`) | **机械臂主机** | 需要低延迟连接 Server 和 Env，必须与 Server 同机运行。 |
-| **Learner** (`run_learner.sh`) | **任意主机** | 可以运行在带强力 GPU 的工作站或服务器上。 |
+| **OpenArm Server** | **机械臂主机** | 直接连接机械臂硬件 (USB/CAN)。 |
+| **Actor** (`run_actor.sh`) | **机械臂主机** | 需连接 Server 和 Env，与 Server 同主机运行。 |
+| **Learner** (`run_learner.sh`) | **任意主机** | 可以运行在不同主机上，actor通过指定ip地址与learner通信。 |
 
 **IP 配置注意**：
 -   启动 **Actor** 时，必须指定 **Learner** 的 IP 地址。
@@ -30,15 +30,15 @@
 ### 奖励分类器 (Classifiers)
 本项目使用了三个不同的奖励分类器 checkpoint，分别用于不同的视角或阶段：
 
-1.  **`classifier_ckpt_cam2_last10`** (主要):
-    -   **作用**: 基于 **Head Camera (Cam 2)** 的图像判断任务是否成功。
-    -   **特点**: 专门针对任务最后阶段（Last 10 frames）的成功状态进行训练，作为主要的稀疏奖励来源。
-2.  **`classifier_ckpt_cam1`** (辅助):
-    -   **作用**: 基于 **Right Camera (Cam 1)** 的图像判断任务是否成功。
-    -   **特点**: 提供辅助视角的奖励信号，与主视角结合以提高鲁棒性。
-3.  **`classifier_ckpt`** (通用/备用):
-    -   **作用**: 基础版本的分类器。
-    -   **特点**: 可作为基准或在特定测试中使用。
+1.  **`classifier_ckpt_cam2_last10`** :
+    -   **作用**: 基于 **头顶相机** 的图像判断任务是否成功。
+    -   **特点**: 使用更多数据进行训练，整体倾向于输出较低奖励。
+2.  **`classifier_ckpt_cam1`** :
+    -   **作用**: 基于 **右臂相机** 的图像判断任务是否成功。
+    -   **特点**: 判断极为准确。
+3.  **`classifier_ckpt`** :
+    -   **作用**: 基于 **头顶相机** 的图像判断任务是否成功。
+    -   **特点**: 使用少量数据进行训练，整体倾向于输出较高奖励。
 
 ### 核心脚本
 | 文件名 | 说明 |
