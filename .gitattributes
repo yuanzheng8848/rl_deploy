@@ -1,1 +1,1 @@
-moqi_workspace/rl_deploy/train_reward_classifier/rl_success_demos.pkl filter=lfs diff=lfs merge=lfs -text
+rl_success_demos.pkl filter=lfs diff=lfs merge=lfs -text

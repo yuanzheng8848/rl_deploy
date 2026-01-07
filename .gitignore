@@ -3,5 +3,4 @@ record_data*
 .vscode
 *ckpt*
 checkpoints/
-rl_success_demos.pkl
 __pycache__
