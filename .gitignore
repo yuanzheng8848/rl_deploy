@@ -1,5 +1,6 @@
 record_data*
-rl_deploy_2
 1.md
 .vscode
-rl_ckpt
+*ckpt
+checkpoints/
+rl_success_demos.pkl
