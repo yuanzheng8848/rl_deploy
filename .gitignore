@@ -1,6 +1,7 @@
 record_data*
 1.md
 .vscode
-*ckpt
+*ckpt*
 checkpoints/
 rl_success_demos.pkl
+__pycache__
