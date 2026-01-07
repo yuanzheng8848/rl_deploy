@@ -75,10 +75,13 @@ from serl_launcher.wrappers.serl_obs_wrappers import SERLObsWrapper
 from openarm_env import OpenArmEnv, DefaultOpenArmConfig
 from franka_env.envs.relative_env import RelativeFrame
 from franka_env.envs.wrappers import Quat2EulerWrapper
+from franka_env.utils.transformations import construct_homogeneous_matrix, construct_adjoint_matrix
+from scipy.spatial.transform import Rotation as R
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("env", "OpenArmEnv", "Name of environment.")
+flags.DEFINE_string("arm", "right", "Which arm to control: 'left', 'right', or 'both'.")
 flags.DEFINE_string("agent", "drq", "Name of agent.")
 flags.DEFINE_string("exp_name", "forward_reach_10cm", "Name of the experiment for wandb logging.")
 flags.DEFINE_integer("max_traj_length", 20, "Maximum length of trajectory.")
@@ -424,7 +427,129 @@ def main(_):
             with open(FLAGS.demo_path, "rb") as f:
                 trajs = pkl.load(f)
                 for traj in trajs:
-                    demo_buffer.insert(traj)
+                    # traj is a dict of arrays, we need to insert individual transitions
+                    # Assuming all keys have the same length
+                    traj_len = len(traj["actions"])
+                    for i in range(traj_len):
+                        # Slice state and actions based on FLAGS.arm
+                        # Assuming demo data is always dual arm (14 dim action, 2x7+2x1 state)
+                        
+                        # --- Adapt for RelativeFrame and Quat2EulerWrapper ---
+                        # 1. Get Reset Pose (First frame of trajectory)
+                        # Assuming demo data structure: state is (N, 16) or similar
+                        # We need to extract the 7-dim pose (XYZ + Quat)
+                        
+                        # Helper to get pose from state vector
+                        def get_pose(s, arm):
+                            if arm == "left": return s[:7]
+                            elif arm == "right": return s[8:15] # 8-14 is pose (7), 15 is gripper
+                            return s[:7] # Default
+                            
+                        def get_gripper(s, arm):
+                            if arm == "left": return s[7:8]
+                            elif arm == "right": return s[15:16]
+                            return s[7:8]
+
+                        # Get initial pose (Reset Pose) for this trajectory
+                        # We assume the first step i=0 is the reset pose, but we are iterating i.
+                        # We need to access the 0-th element of the WHOLE trajectory arrays.
+                        # traj["observations"]["state"] is the whole array.
+                        
+                        reset_state_vec = traj["observations"]["state"][0]
+                        reset_pose_abs = get_pose(reset_state_vec, FLAGS.arm)
+                        
+                        # Calculate T_reset_inv
+                        T_reset = construct_homogeneous_matrix(reset_pose_abs)
+                        T_reset_inv = np.linalg.inv(T_reset)
+                        
+                        # Process current step
+                        curr_state_vec = traj["observations"]["state"][i]
+                        next_state_vec = traj["next_observations"]["state"][i]
+                        
+                        curr_pose_abs = get_pose(curr_state_vec, FLAGS.arm)
+                        next_pose_abs = get_pose(next_state_vec, FLAGS.arm)
+                        
+                        curr_gripper = get_gripper(curr_state_vec, FLAGS.arm)
+                        next_gripper = get_gripper(next_state_vec, FLAGS.arm)
+                        
+                        # 2. Compute Relative Pose
+                        def to_relative(pose_abs, T_inv):
+                            T_curr = construct_homogeneous_matrix(pose_abs)
+                            T_rel = T_inv @ T_curr
+                            p_rel = T_rel[:3, 3]
+                            q_rel = R.from_matrix(T_rel[:3, :3]).as_quat()
+                            return np.concatenate([p_rel, q_rel])
+                            
+                        curr_pose_rel = to_relative(curr_pose_abs, T_reset_inv)
+                        next_pose_rel = to_relative(next_pose_abs, T_reset_inv)
+                        
+                        # 3. Convert to Euler (Quat2EulerWrapper)
+                        def to_euler(pose_quat):
+                            # pose_quat is (7,) [xyz, qx, qy, qz, qw]
+                            xyz = pose_quat[:3]
+                            quat = pose_quat[3:]
+                            rpy = R.from_quat(quat).as_euler("xyz")
+                            return np.concatenate([xyz, rpy])
+                            
+                        curr_pose_euler = to_euler(curr_pose_rel) # (6,)
+                        next_pose_euler = to_euler(next_pose_rel) # (6,)
+                        
+                        # 4. Add Dummy Velocity (6,)
+                        vel = np.zeros((6,), dtype=np.float32)
+                        
+                        # 5. Construct Final State Dictionary
+                        # So we need to construct a single vector of size 13: [pose(6), vel(6), gripper(1)].
+                        
+                        final_state = np.concatenate([curr_pose_euler, vel, curr_gripper]) # (13,)
+                        final_next_state = np.concatenate([next_pose_euler, vel, next_gripper]) # (13,)
+                        
+                        # Action Transformation (Adjoint)
+                        # RelativeFrame transforms action from Body to Base.
+                        # The demo actions are already in Base frame (absolute).
+                        # We need to transform them to Body frame (inverse of RelativeFrame.transform_action).
+                        # action_body = adjoint_inv @ action_base
+                        
+                        T_curr_abs = construct_homogeneous_matrix(curr_pose_abs)
+                        adjoint = construct_adjoint_matrix(curr_pose_abs) # Adjoint of ABSOLUTE pose
+                        adjoint_inv = np.linalg.inv(adjoint)
+                        
+                        # Slice action based on arm
+                        action = traj["actions"][i]
+                        if FLAGS.arm == "left":
+                            arm_action = action[:7]
+                        elif FLAGS.arm == "right":
+                            arm_action = action[7:]
+                        else:
+                            arm_action = action[:7] # Default
+                            
+                        action_base = arm_action[:6] # XYZ + RPY
+                        gripper_action = arm_action[6:] # Gripper
+                        
+                        action_body_6d = adjoint_inv @ action_base
+                        final_action = np.concatenate([action_body_6d, gripper_action]) # (7,)
+                        
+                        # --- Reward Shaping ---
+                        # Success Demos: Last 10 steps are success (1.0), others are path (0.0)
+                        # We assume rl_success_demos.pkl ONLY contains success demos.
+                        
+                        is_success_step = i >= (traj_len - 10)
+                        reward_val = 1.0 if is_success_step else 0.0
+                        
+                        transition = {
+                            "observations": {
+                                "state": final_state,
+                                **{k: v[i] for k, v in traj["observations"].items() if k != "state"}
+                            },
+                            "next_observations": {
+                                "state": final_next_state,
+                                **{k: v[i] for k, v in traj["next_observations"].items() if k != "state"}
+                            },
+                            "actions": final_action,
+                            "rewards": np.array(reward_val, dtype=np.float32), # Overwrite reward
+                            "masks": np.array(1.0, dtype=np.float32), # Ensure mask is 1.0
+                            "dones": traj["dones"][i],
+                        }
+                        demo_buffer.insert(transition)
             print(f"demo buffer size: {len(demo_buffer)}")
         else:
             print("WARNING: No demo path provided. Demo buffer will be empty.")

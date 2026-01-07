@@ -4,10 +4,11 @@ export PYTHONPATH=$PYTHONPATH:$(pwd)
 export XLA_PYTHON_CLIENT_PREALLOCATE=false
 
 # Find the latest demo file
-LATEST_DEMO=$(ls -t pick_place_right_*_demos_*.pkl 2>/dev/null | head -n 1)
+# Use the specific demo file
+LATEST_DEMO="rl_success_demos.pkl"
 
-if [ -z "$LATEST_DEMO" ]; then
-    echo "No demo file found! Please run run_record.sh first."
+if [ ! -f "$LATEST_DEMO" ]; then
+    echo "Demo file $LATEST_DEMO not found!"
     exit 1
 fi
 
@@ -22,4 +23,4 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/peter/miniconda3/envs/zy/lib/pytho
 
 echo "Using demo file: $LATEST_DEMO"
 
-python train_pick_place.py --learner --exp_name=pick_place_right --demo_path="$LATEST_DEMO"
+python train_pick_place.py --learner --demo_path="$LATEST_DEMO"

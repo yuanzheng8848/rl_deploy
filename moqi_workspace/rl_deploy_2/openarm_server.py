@@ -10,7 +10,7 @@ import cv2
 import base64
 
 # --- 配置 ---
-USE_MOCK = False  # Set to True to use Mock Hardware, False for Real Hardware
+USE_MOCK = True  # Set to True to use Mock Hardware, False for Real Hardware
 
 # --- 路径配置 ---
 ROOT_DIR = Path(__file__).resolve().parent.parent
