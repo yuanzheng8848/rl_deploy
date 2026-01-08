@@ -362,11 +362,8 @@ class OpenArmEnv(gym.Env):
         if self.target_pos is not None:
             dist = np.linalg.norm(current_pos - self.target_pos)
             
-            # 平滑奖励: 距离越小，奖励越接近 1.0
-            # tanh(10 * 0.0) = 0 -> Reward = 1.0
-            # tanh(10 * 0.1) = 0.76 -> Reward = 0.24
-            # tanh(10 * 0.2) = 0.96 -> Reward = 0.04
-            reward = 1.0 - np.tanh(10.0 * dist)
+            # Binary Reward: 1.0 if success (dist < 0.05), else 0.0
+            reward = 1.0 if dist < 0.05 else 0.0
             
             # 打印调试信息
             if dist < 0.05:
